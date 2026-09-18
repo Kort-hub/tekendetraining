@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Teken de training</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --text-color: #0f172a;
+            --primary: #3b82f6;
+            --danger: #ef4444;
+            --success: #10b981;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+        }
+        body { 
+            font-family: 'Inter', sans-serif; display: flex; flex-direction: column; 
+            align-items: center; background-color: var(--bg-color); color: var(--text-color);
+            margin: 0; padding: 15px; user-select: none; overscroll-behavior-y: contain; 
+        }
+        body.eraser-mode #field, body.eraser-mode #draw-layer path {
+            cursor: crosshair !important;
+        }
+        .header-title { margin-top: 10px; margin-bottom: 20px; font-weight: 900; color: #1e293b; text-align: center; font-size: 1.8rem;}
+        
+        .toolbar { 
+            display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; 
+            justify-content: center; background: var(--surface); padding: 12px; 
+            border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
+            border: 1px solid var(--border); width: 100%; max-width: 900px;
+        }
+        button, select { 
+            padding: 8px 12px; cursor: pointer; border: 1px solid var(--border); 
+            border-radius: 8px; background-color: var(--surface); 
+            font-family: 'Inter', sans-serif; font-weight: 600; font-size: 13px; 
+            color: var(--text-color); transition: 0.2s; outline: none; 
+        }
+        button:hover, select:hover { background-color: #f1f5f9; }
+        button.active { background-color: var(--primary); color: white; border-color: var(--primary); }
+        select { 
+            padding-right: 28px; appearance: none; -webkit-appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat; background-position: right 8px center; background-size: 14px;
+        }
+        .action-btn { color: var(--danger); }
+        .action-btn:hover { background-color: #fef2f2; }
+        .export-btn { background-color: var(--success); color: white; border-color: var(--success); }
+        .info-btn { background-color: #e2e8f0; border-color: #cbd5e1; margin-left: auto; }
+        .info-btn:hover { background-color: #cbd5e1; }
+        #export-container {
+            background: white; padding: 15px; border-radius: 12px; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); width: 100%; max-width: 900px; box-sizing: border-box;
+        }
+        #field { 
+            width: 100%; aspect-ratio: 3 / 2; background-color: #3f9b2f; 
+            background-image: repeating-linear-gradient(90deg, transparent, transparent 5.33%, rgba(0,0,0,0.06) 5.33%, rgba(0,0,0,0.06) 10.66%);
+            border: 3px solid white; position: relative; cursor: crosshair; 
+            overflow: hidden; border-radius: 4px; box-shadow: inset 0 0 20px rgba(0,0,0,0.2); box-sizing: border-box;
+        }
+        .field-logo {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            height: 55%; width: auto; opacity: 0.25; pointer-events: none; z-index: 1; 
+        }
+        .pitch-lines { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 2; }
+        .center-line { position: absolute; top: 0; bottom: 0; left: 50%; border-left: 2px solid rgba(255,255,255,0.7); transform: translateX(-50%); }
+        .center-circle { position: absolute; top: 50%; left: 50%; width: 17%; height: 26%; border: 2px solid rgba(255,255,255,0.7); border-radius: 50%; transform: translate(-50%, -50%); }
+        .center-dot { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: rgba(255,255,255,0.7); border-radius: 50%; transform: translate(-50%, -50%); }
+        .penalty-box { position: absolute; top: 50%; width: 15%; height: 44%; border: 2px solid rgba(255,255,255,0.7); transform: translateY(-50%); }
+        .penalty-box.left { left: 0; border-left: none; }
+        .penalty-box.right { right: 0; border-right: none; }
+        #trash-can {
+            position: absolute; bottom: 15px; right: 15px; font-size: 26px; z-index: 20; 
+            opacity: 0.7; transition: all 0.2s ease; background: white; border-radius: 50%; 
+            width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 2px solid transparent;
+        }
+        #trash-can.hover { transform: scale(1.2); opacity: 1; background: #fef2f2; border-color: #ef4444; }
+        #draw-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        #draw-layer path { pointer-events: stroke; }
+        .item { position: absolute; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; cursor: grab; z-index: 10; }
+        .cone { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset -4px -4px 8px rgba(0,0,0,0.3), 0 3px 5px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.4); }
+        .goal-shape {
+            border: 3px solid #ffffff; border-bottom: none; background-color: rgba(255,255,255,0.15);
+            background-image: linear-gradient(to right, rgba(255,255,255,0.6) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.6) 1px, transparent 1px);
+            background-size: 6px 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transform-origin: center center;
+        }
+        .goal-small { width: 35px; height: 16px; }
+        .goal-large { width: 70px; height: 25px; }
+        .emoji-item { font-size: 22px; filter: drop-shadow(0 3px 3px rgba(0,0,0,0.4)); }
+        
+        .legend { margin-top: 15px; display: flex; gap: 10px; font-weight: 600; font-size: 13px; color: #475569; justify-content: center; padding-top: 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+        .legend span.badge { color: white; padding: 2px 6px; border-radius: 12px; font-size: 12px; margin-left: 4px; }
+        .cone-dots-container { display: flex; align-items: center; gap: 3px; margin-left: 4px; }
+        .cone-dot { width: 16px; height: 16px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 9px; color: white; border: 1px solid rgba(0,0,0,0.2); }
+        #count-blue { background: #3b82f6; }
+        #count-yellow { background: #facc15; color: black; }
+        #count-orange { background: #f97316; }
+        #count-ball, #count-goal { background: #64748b; }
+        
+        #notes-area {
+            width: 100%; min-height: 80px; margin-top: 15px; padding: 12px;
+            border: 1px solid var(--border); border-radius: 8px; background-color: var(--surface);
+            font-family: 'Inter', sans-serif; font-size: 13px; color: var(--text-color);
+            box-sizing: border-box; resize: none; overflow: hidden; line-height: 1.5;
+        }
+        #notes-area:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+
+        .toolbar-group { display: flex; gap: 6px; border-right: 2px solid var(--border); padding-right: 8px; align-items: center; flex-wrap: wrap; justify-content: center;}
+        .toolbar-group:last-child { border-right: none; padding-right: 0; }
+        .modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; 
+            background-color: rgba(0,0,0,0.5); justify-content: center; align-items: center; backdrop-filter: blur(3px);
+        }
+        .modal-content {
+            background-color: #fff; padding: 25px 30px; border-radius: 12px; max-width: 500px; width: 90%; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative;
+        }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #64748b; font-weight: bold; }
+        .close-btn:hover { color: #0f172a; }
+        .modal h3 { margin-top: 0; color: #1e293b; font-size: 1.2rem; }
+        .modal ul { padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.6; margin-bottom: 0;}
+        .modal li { margin-bottom: 8px; }
+        
+        @media (max-width: 600px) {
+            .toolbar-group { border-right: none; padding-right: 0; border-bottom: 1px solid var(--border); padding-bottom: 8px; width: 100%;}
+            .toolbar-group:last-child { border-bottom: none; }
+            .header-title { font-size: 1.5rem; margin-top: 5px; margin-bottom: 15px;}
+            .item { transform: translate(-50%, -50%) scale(0.8); } 
+            #trash-can { width: 40px; height: 40px; font-size: 20px; }
+            .info-btn { margin-left: 0; width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h2 class="header-title">Teken de training</h2>
+    <div class="toolbar" id="toolbar">
+        <div class="toolbar-group">
+            <button onclick="selectItem('player-blue', 'blue', this)" style="border-bottom: 4px solid #3b82f6;">Blauw</button>
+            <button onclick="selectItem('player-yellow', 'yellow', this)" style="border-bottom: 4px solid #facc15;">Geel</button>
+            <button onclick="selectItem('player-orange', 'orange', this)" style="border-bottom: 4px solid #f97316;">Oranje</button>
+        </div>
+        <div class="toolbar-group">
+            <button onclick="selectItem('ball', '⚽', this)">Bal</button>
+            <button onclick="selectItem('goal-small', 'small', this)">Goal Klein</button>
+            <button onclick="selectItem('goal-large', 'large', this)">Goal Groot</button>
+            <select id="cone-select" onchange="selectItem('cone', this.value, this)">
+                <option value="" disabled selected>Kies hoedje...</option>
+                <option value="red">Rood</option>
+                <option value="blue">Blauw</option>
+                <option value="yellow">Geel</option>
+                <option value="orange">Oranje</option>
+                <option value="green">Groen</option>
+                <option value="white">Wit</option>
+            </select>
+        </div>
+        <div class="toolbar-group">
+            <button onclick="selectItem('draw-pass', 'pass', this)">Pass ➡️</button>
+            <button onclick="selectItem('draw-run', 'run', this)">Loop ➖</button>
+            <button onclick="selectItem('draw-dribble', 'dribble', this)">Dribbel 〰️</button>
+            <button onclick="selectItem('eraser', 'eraser', this)" style="border-bottom: 4px solid #ef4444;">Gum 🧽</button>
+        </div>
+        <div class="toolbar-group" style="flex-grow: 1;">
+            <button class="action-btn" id="btn-snap" onclick="toggleSnap()">🧲 Snap: Uit</button>
+            <button class="action-btn" onclick="undo()">⬅️ Undo</button>
+            <button class="action-btn" onclick="resetField()">🔄 Reset</button>
+            <button class="export-btn" onclick="exportToImage()">🖼️ PNG</button>
+            <button class="export-btn" onclick="exportToPDF()">📄 PDF</button>
+            <button class="info-btn" onclick="openInfo()">ℹ️ Info</button>
+        </div>
+    </div>
+    
+    <div id="info-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeInfo()">&times;</span>
+            <h3>Hoe werkt deze app?</h3>
+            <ul>
+                <li><b>Plaatsen:</b> Selecteer een item of hesje in het menu en tik op het veld om het neer te zetten.</li>
+                <li><b>Verplaatsen:</b> Pak een item vast op het veld en sleep het naar de gewenste plek.</li>
+                <li><b>Doelen draaien:</b> Dubbelklik (of klik met de rechtermuisknop) op een doel om deze 45 graden te draaien.</li>
+                <li><b>Lijnen tekenen:</b> Kies een tekentool (Pass, Loop of Dribbel) en sleep je vinger of muis over het veld om een lijn te trekken.</li>
+                <li><b>Wissen (Gum):</b> Met de gum kun je alleen lijnen weghalen.</li>
+                <li><b>Snap / Magneet:</b> Zet "Snap" aan om items perfect uit te lijnen op een onzichtbaar raster.</li>
+                <li><b>Prullenbak:</b> Sleep een item naar de prullenbak (🗑️) rechtsonderin het veld om het te verwijderen.</li>
+                <li><b>Exporteren:</b> Gebruik de knoppen PNG of PDF om je oefening en opmerkingen direct op te slaan (klaar om te printen).</li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="export-container">
+        
+        <div id="field" oncontextmenu="return false;">
+            <svg class="field-logo" viewBox="0 0 500 250" xmlns="http://www.w3.org/2000/svg">
+                <g font-style="italic" font-family="Arial, sans-serif" transform="skewX(-10)">
+                    <text x="260" y="140" font-size="110" font-weight="900" text-anchor="middle">
+                        <tspan fill="#003366">G</tspan><tspan fill="#f97316">P</tspan><tspan fill="#003366">C</tspan>
+                    </text>
+                    <text x="260" y="185" font-size="32" font-weight="800" fill="#003366" text-anchor="middle" letter-spacing="4">VLISSINGEN</text>
+                </g>
+                <g stroke-width="14" stroke-linecap="square">
+                    <line x1="120" y1="20" x2="170" y2="70" stroke="#f97316"/>
+                    <line x1="100" y1="50" x2="150" y2="100" stroke="#003366"/>
+                    <line x1="330" y1="180" x2="370" y2="220" stroke="#f97316"/>
+                    <line x1="310" y1="210" x2="360" y2="260" stroke="#003366"/>
+                </g>
+            </svg>
+            <div class="pitch-lines">
+                <div class="center-line"></div>
+                <div class="center-circle"></div>
+                <div class="center-dot"></div>
+                <div class="penalty-box left"></div>
+                <div class="penalty-box right"></div>
+            </div>
+            <div id="trash-can">🗑️</div>
+            <svg id="draw-layer" viewBox="0 0 750 500" preserveAspectRatio="none">
+                <defs>
+                    <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="white" />
+                    </marker>
+                </defs>
+            </svg>
+        </div>
+        
+        <div class="legend">
+            <div>Blauw: <span class="badge" id="count-blue">0</span></div>
+            <div>Geel: <span class="badge" id="count-yellow">0</span></div>
+            <div>Oranje: <span class="badge" id="count-orange">0</span></div>
+            <div>Ballen: <span class="badge" id="count-ball">0</span></div>
+            <div>Goals: <span class="badge" id="count-goal">0</span></div>
+            <div style="display:flex; align-items:center;">
+                Hoedjes: 
+                <div class="cone-dots-container">
+                    <div class="cone-dot" style="background:#ef4444;" id="count-cone_red">0</div>
+                    <div class="cone-dot" style="background:#3b82f6;" id="count-cone_blue">0</div>
+                    <div class="cone-dot" style="background:#facc15; color:black;" id="count-cone_yellow">0</div>
+                    <div class="cone-dot" style="background:#f97316;" id="count-cone_orange">0</div>
+                    <div class="cone-dot" style="background:#22c55e;" id="count-cone_green">0</div>
+                    <div class="cone-dot" style="background:#ffffff; color:black;" id="count-cone_white">0</div>
+                </div>
+            </div>
+        </div>
+                
+        <textarea id="notes-area" placeholder="Typ hier de uitleg of opmerkingen voor de oefening..." oninput="autoResizeTextarea()"></textarea>
+
+    </div>
+    <script>
+        let currentType = null;
+        let currentValue = null;
+        let history = []; 
+        let snapEnabled = false;
+        const coneColors = { 'red': '#ef4444', 'blue': '#3b82f6', 'yellow': '#facc15', 'orange': '#f97316', 'green': '#22c55e', 'white': '#ffffff' };
+        let counts = { blue: 0, yellow: 0, orange: 0, ball: 0, goal: 0, cone_red: 0, cone_blue: 0, cone_yellow: 0, cone_orange: 0, cone_green: 0, cone_white: 0 };
+        let isDragging = false;
+        let dragItem = null;
+        let isDrawing = false;
+        let currentPath = null;
+        let drawStartX = 0;
+        let drawStartY = 0;
+                
+        function autoResizeTextarea() {
+            const el = document.getElementById('notes-area');
+            el.style.height = 'auto';
+            el.style.height = (el.scrollHeight) + 2 + 'px';
+        }
+
+        function toggleSnap() {
+            snapEnabled = !snapEnabled;
+            const btn = document.getElementById('btn-snap');
+            if (snapEnabled) {
+                btn.innerText = '🧲 Snap: Aan';
+                btn.style.backgroundColor = '#10b981';
+                btn.style.color = 'white';
+            } else {
+                btn.innerText = '🧲 Snap: Uit';
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+            }
+        }
+
+        function openInfo() { document.getElementById('info-modal').style.display = 'flex'; }
+        function closeInfo() { document.getElementById('info-modal').style.display = 'none'; }
+        window.onclick = function(event) {
+            const modal = document.getElementById('info-modal');
+            if (event.target === modal) modal.style.display = "none";
+        }
+        function selectItem(type, value, element) {
+            currentType = type; currentValue = value;
+            document.querySelectorAll('.toolbar button').forEach(btn => btn.classList.remove('active'));
+            if(element.tagName === "BUTTON") {
+                element.classList.add('active');
+                document.getElementById('cone-select').selectedIndex = 0; 
+            }
+            if (type === 'eraser') document.body.classList.add('eraser-mode');
+            else document.body.classList.remove('eraser-mode');
+        }
+        function getShirtSVG(color, label, textColor) {
+            return `<svg viewBox="0 0 24 24" width="30" height="30" style="fill: ${color}; filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4)); pointer-events: none;">
+                    <path d="M20.5,6.5l-4-3.5C16.1,2.6,15.6,2.5,15,2.5H9c-0.6,0-1.1,0.1-1.5,0.5l-4,3.5c-0.5,0.4-0.6,1-0.3,1.5l1.5,2.5 c0.3,0.5,0.9,0.6,1.4,0.4l1.4-0.8V21c0,0.6,0.4,1,1,1h7c0.6,0,1-0.4,1-1V10.1l1.4,0.8c0.5,0.3,1.1,0.1,1.4-0.4l1.5-2.5 C21.1,7.5,21,6.9,20.5,6.5z" stroke="rgba(255,255,255,0.7)" stroke-width="1"/>
+                    <text x="12" y="14.5" font-size="5.5" font-family="Inter, sans-serif" font-weight="900" fill="${textColor}" text-anchor="middle" dominant-baseline="middle">${label}</text>
+                </svg>`;
+        }
+        function createZigzagPath(x1, y1, x2, y2) {
+            const dx = x2 - x1; const dy = y2 - y1;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            const angle = Math.atan2(dy, dx);
+            const zigzagSize = 12; 
+            let path = `M ${x1},${y1} `;
+            const steps = Math.floor(dist / zigzagSize);
+            for(let i = 1; i <= steps; i++) {
+                const d = i * zigzagSize;
+                let offset = (i % 2 === 0) ? 6 : -6;
+                if (i === steps) offset = 0; 
+                let px = x1 + Math.cos(angle)*d - Math.sin(angle)*offset;
+                let py = y1 + Math.sin(angle)*d + Math.cos(angle)*offset;
+                path += `L ${px},${py} `;
+            }
+            path += `L ${x2},${y2}`;
+            return path;
+        }
+        function deleteItem(el) {
+            if (el.dataset.category) { counts[el.dataset.category]--; updateLegend(); }
+            el.remove();
+        }
+        const fieldEl = document.getElementById('field');
+        fieldEl.addEventListener('mousedown', handleFieldStart);
+        fieldEl.addEventListener('touchstart', handleFieldStart, {passive: false});
+        function handleFieldStart(e) {
+            if (e.button === 2) return;
+            if (currentType === 'eraser') {
+                if (e.target.tagName.toLowerCase() === 'path' && e.target.closest('#draw-layer')) {
+                    e.target.remove();
+                }
+                return; 
+            }
+            if (e.target.closest('.item') || e.target.closest('#trash-can')) return;
+            if (!currentType) { alert("Selecteer eerst een item of tool uit het menu!"); return; }
+            const rect = fieldEl.getBoundingClientRect();
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+            let percentX = ((clientX - rect.left) / rect.width) * 100;
+            let percentY = ((clientY - rect.top) / rect.height) * 100;
+            const svgX = ((clientX - rect.left) / rect.width) * 750;
+            const svgY = ((clientY - rect.top) / rect.height) * 500;
+            
+            if (currentType.startsWith('draw-')) {
+                isDrawing = true; drawStartX = svgX; drawStartY = svgY;
+                currentPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                currentPath.setAttribute("stroke", "white");
+                currentPath.setAttribute("stroke-width", "4");
+                currentPath.setAttribute("fill", "none");
+                currentPath.setAttribute("marker-end", "url(#arrowhead)");
+                if (currentType === 'draw-run') currentPath.setAttribute("stroke-dasharray", "8,8");
+                document.getElementById('draw-layer').appendChild(currentPath);
+            } else {
+                if (snapEnabled) {
+                    let refX = (percentX / 100) * 750;
+                    let refY = (percentY / 100) * 500;
+                    refX = Math.round(refX / 25) * 25;
+                    refY = Math.round(refY / 25) * 25;
+                    percentX = (refX / 750) * 100;
+                    percentY = (refY / 500) * 100;
+                }
+                placeItemAt(percentX, percentY);
+            }
+        }
+        function placeItemAt(percentX, percentY) {
+            const el = document.createElement('div');
+            el.className = 'item';
+            el.style.left = percentX + '%';
+            el.style.top = percentY + '%';
+            let category = '';
+            if (currentType === 'cone') {
+                el.classList.add('cone'); el.style.backgroundColor = coneColors[currentValue]; 
+                category = 'cone_' + currentValue; counts[category]++;
+            } else if (currentType.startsWith('player-')) {
+                let color, textColor, label;
+                if (currentType === 'player-blue') { counts.blue++; color = '#3b82f6'; textColor = '#ffffff'; label = 'B' + counts.blue; category = 'blue'; }
+                if (currentType === 'player-yellow') { counts.yellow++; color = '#facc15'; textColor = '#000000'; label = 'G' + counts.yellow; category = 'yellow'; }
+                if (currentType === 'player-orange') { counts.orange++; color = '#f97316'; textColor = '#ffffff'; label = 'O' + counts.orange; category = 'orange'; }
+                el.innerHTML = getShirtSVG(color, label, textColor);
+            } else if (currentType === 'ball') {
+                el.classList.add('emoji-item'); el.innerText = '⚽'; category = 'ball'; counts.ball++;
+            } else if (currentType.startsWith('goal')) {
+                el.classList.add('goal-shape');
+                if (currentType === 'goal-small') el.classList.add('goal-small');
+                if (currentType === 'goal-large') el.classList.add('goal-large');
+                el.dataset.rotation = 0;
+                el.addEventListener('contextmenu', rotateGoal);
+                el.addEventListener('dblclick', rotateGoal);
+                category = 'goal'; counts.goal++;
+            }
+            el.dataset.category = category;
+            el.addEventListener('mousedown', startDrag);
+            el.addEventListener('touchstart', startDrag, {passive: false});
+            fieldEl.appendChild(el);
+            history.push({ element: el, category: category, isDraw: false });
+            updateLegend();
+        }
+        function rotateGoal(e) {
+            e.preventDefault(); e.stopPropagation();
+            let goal = e.currentTarget;
+            let currentRotation = parseInt(goal.dataset.rotation || 0);
+            currentRotation = (currentRotation + 45) % 360; 
+            goal.dataset.rotation = currentRotation;
+            goal.style.transform = `translate(-50%, -50%) rotate(${currentRotation}deg)`;
+        }
+        function startDrag(e) {
+            if (e.button === 2) return;
+            e.stopPropagation();
+            dragItem = e.currentTarget; isDragging = false;
+            const clientX = e.clientX || e.touches[0].clientX;
+            const clientY = e.clientY || e.touches[0].clientY;
+            const rect = fieldEl.getBoundingClientRect();
+            dragItem.dataset.startX = ((clientX - rect.left) / rect.width) * 100;
+            dragItem.dataset.startY = ((clientY - rect.top) / rect.height) * 100;
+            dragItem.dataset.startLeft = parseFloat(dragItem.style.left);
+            dragItem.dataset.startTop = parseFloat(dragItem.style.top);
+            dragItem.style.cursor = 'grabbing'; dragItem.style.zIndex = 100;
+        }
+        function handleMove(e) {
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            const rect = fieldEl.getBoundingClientRect();
+            if (dragItem) {
+                const percentX = ((clientX - rect.left) / rect.width) * 100;
+                const percentY = ((clientY - rect.top) / rect.height) * 100;
+                const dx = percentX - parseFloat(dragItem.dataset.startX);
+                const dy = percentY - parseFloat(dragItem.dataset.startY);
+                if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+                    isDragging = true; e.preventDefault(); 
+                    let targetX = parseFloat(dragItem.dataset.startLeft) + dx;
+                    let targetY = parseFloat(dragItem.dataset.startTop) + dy;
+                    if (snapEnabled) {
+                        let refX = (targetX / 100) * 750;
+                        let refY = (targetY / 100) * 500;
+                        refX = Math.round(refX / 25) * 25;
+                        refY = Math.round(refY / 25) * 25;
+                        targetX = (refX / 750) * 100;
+                        targetY = (refY / 500) * 100;
+                    }
+                    dragItem.style.left = targetX + '%';
+                    dragItem.style.top = targetY + '%';
+                    const trashCan = document.getElementById('trash-can');
+                    const tRect = trashCan.getBoundingClientRect();
+                    if (clientX >= tRect.left && clientX <= tRect.right && clientY >= tRect.top && clientY <= tRect.bottom) {
+                        trashCan.classList.add('hover'); dragItem.dataset.inTrash = "true";
+                    } else {
+                        trashCan.classList.remove('hover'); dragItem.dataset.inTrash = "false";
+                    }
+                }
+            } else if (isDrawing && currentPath) {
+                e.preventDefault(); 
+                const svgX = ((clientX - rect.left) / rect.width) * 750;
+                const svgY = ((clientY - rect.top) / rect.height) * 500;
+                if (currentType === 'draw-pass' || currentType === 'draw-run') {
+                    currentPath.setAttribute("d", `M ${drawStartX},${drawStartY} L ${svgX},${svgY}`);
+                } else if (currentType === 'draw-dribble') {
+                    currentPath.setAttribute("d", createZigzagPath(drawStartX, drawStartY, svgX, svgY));
+                }
+            }
+        }
+        function handleEnd(e) {
+            if (dragItem) { 
+                if (dragItem.dataset.inTrash === "true") {
+                    deleteItem(dragItem);
+                    document.getElementById('trash-can').classList.remove('hover');
+                } else {
+                    dragItem.style.cursor = 'grab'; dragItem.style.zIndex = 10; 
+                }
+                setTimeout(() => { isDragging = false; dragItem = null; }, 50); 
+            }
+            if (isDrawing) { isDrawing = false; if (currentPath) { history.push({ element: currentPath, category: 'draw', isDraw: true }); currentPath = null; } }
+        }
+        document.addEventListener('mousemove', handleMove);
+        document.addEventListener('touchmove', handleMove, {passive: false});
+        document.addEventListener('mouseup', handleEnd);
+        document.addEventListener('touchend', handleEnd);
+        function undo() {
+            if (history.length === 0) return;
+            let lastAction = history.pop(); 
+            while (!document.body.contains(lastAction.element) && history.length > 0) { lastAction = history.pop(); }
+            if (!document.body.contains(lastAction.element)) return;
+            lastAction.element.remove();
+            if (!lastAction.isDraw && lastAction.category) { counts[lastAction.category]--; updateLegend(); }
+        }
+        function resetField() {
+            if(confirm("Weet je zeker dat je het veld en de opmerkingen leeg wilt maken?")) {
+                fieldEl.querySelectorAll('.item').forEach(item => item.remove());
+                document.getElementById('draw-layer').querySelectorAll('path:not(defs path)').forEach(p => p.remove());
+                document.getElementById('notes-area').value = '';
+                document.getElementById('notes-area').style.height = '80px';
+                history = []; counts = { blue: 0, yellow: 0, orange: 0, ball: 0, goal: 0, cone_red: 0, cone_blue: 0, cone_yellow: 0, cone_orange: 0, cone_green: 0, cone_white: 0 };
+                updateLegend();
+            }
+        }
+        function updateLegend() {
+            document.getElementById('count-blue').innerText = counts.blue; document.getElementById('count-yellow').innerText = counts.yellow; document.getElementById('count-orange').innerText = counts.orange;
+            document.getElementById('count-ball').innerText = counts.ball; document.getElementById('count-goal').innerText = counts.goal;
+            document.getElementById('count-cone_red').innerText = counts.cone_red; document.getElementById('count-cone_blue').innerText = counts.cone_blue; document.getElementById('count-cone_yellow').innerText = counts.cone_yellow;
+            document.getElementById('count-cone_orange').innerText = counts.cone_orange; document.getElementById('count-cone_green').innerText = counts.cone_green; document.getElementById('count-cone_white').innerText = counts.cone_white;
+        }
+        async function exportToImage() {
+            document.getElementById('trash-can').style.display = 'none';
+            const exportArea = document.getElementById('export-container');
+            const canvas = await html2canvas(exportArea, { scale: 3, backgroundColor: '#ffffff' });
+            
+            document.getElementById('trash-can').style.display = 'flex';
+            document.getElementById('field').style.backgroundImage = "repeating-linear-gradient(90deg, transparent, transparent 5.33%, rgba(0,0,0,0.06) 5.33%, rgba(0,0,0,0.06) 10.66%)";
+
+            const link = document.createElement('a'); link.download = 'trainingsvorm.png'; link.href = canvas.toDataURL('image/png'); link.click();
+        }
+        async function exportToPDF() {
+            document.getElementById('trash-can').style.display = 'none';
+            const exportArea = document.getElementById('export-container');
+            const canvas = await html2canvas(exportArea, { scale: 3, backgroundColor: '#ffffff' });
+            
+            document.getElementById('trash-can').style.display = 'flex';
+            document.getElementById('field').style.backgroundImage = "repeating-linear-gradient(90deg, transparent, transparent 5.33%, rgba(0,0,0,0.06) 5.33%, rgba(0,0,0,0.06) 10.66%)";
+
+            const imgData = canvas.toDataURL('image/jpeg', 1.0);
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('landscape', 'mm', 'a5');
+            const pdfWidth = 210; const pdfHeight = 148.5;
+            const imgProps = pdf.getImageProperties(imgData);
+            const imgRatio = imgProps.width / imgProps.height; const pdfRatio = pdfWidth / pdfHeight;
+            let finalWidth, finalHeight;
+            if (imgRatio > pdfRatio) { finalWidth = pdfWidth - 10; finalHeight = finalWidth / imgRatio; } else { finalHeight = pdfHeight - 10; finalWidth = finalHeight * imgRatio; }
+            const x = (pdfWidth - finalWidth) / 2; const y = (pdfHeight - finalHeight) / 2;
+            pdf.addImage(imgData, 'JPEG', x, y, finalWidth, finalHeight); pdf.save("trainingsvorm.pdf");
+        }
+    </script>
+</body>
+</html>
+<FollowUp><ElicitationsGroup></ElicitationsGroup></FollowUp>
